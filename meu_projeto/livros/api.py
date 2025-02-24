@@ -11,14 +11,33 @@ class CategoriaSchema(ModelSchema):
     class Config:
         model = Categoria
         model_fields = '__all__'
+from ninja import ModelSchema, Schema
+from typing import List
+from .models import Livro, Autor, Categoria
 
-class LivroSchema(ModelSchema):
+class LivroInputSchema(Schema):
+    titulo: str
+    isbn: str
+    ano_publicacao: int
     autores: List[int]
     categorias: List[int]
 
-    class Config:
-        model = Livro
-        model_fields = ['titulo', 'isbn', 'ano_publicacao']
+
+class LivroOutputSchema(Schema):
+    id: int
+    titulo: str
+    isbn: str
+    ano_publicacao: int
+    autores: List[int]
+    categorias: List[int]
+
+    @staticmethod
+    def resolve_autores(obj):
+        return [autor.id for autor in obj.autores.all()]
+
+    @staticmethod
+    def resolve_categorias(obj):
+        return [categoria.id for categoria in obj.categorias.all()]
 
 api = NinjaAPI()
 
@@ -66,12 +85,12 @@ def excluir_categoria(request, categoria_id: int):
     categoria_obj.delete()
     return {"message": "Categoria excluída com sucesso!"}
 
-@api.get("/livros/", response=List[LivroSchema])
+@api.get("/livros/", response=List[LivroOutputSchema])
 def listar_livros(request):
     return Livro.objects.all()
 
-@api.post("/livros/", response=LivroSchema)
-def criar_livro(request, livro: LivroSchema):
+@api.post("/livros/", response=LivroOutputSchema)
+def criar_livro(request, livro: LivroInputSchema):
     autores = Autor.objects.filter(id__in=livro.autores)
     categorias = Categoria.objects.filter(id__in=livro.categorias)
     novo_livro = Livro.objects.create(
@@ -81,9 +100,13 @@ def criar_livro(request, livro: LivroSchema):
     novo_livro.categorias.set(categorias)
     return novo_livro
 
-@api.put("/livros/{livro_id}/", response=LivroSchema)
-def atualizar_livro(request, livro_id: int, livro: LivroSchema):
-    livro_obj = Livro.objects.get(id=livro_id)
+
+from django.shortcuts import get_object_or_404
+
+@api.put("/livros/{livro_id}/", response=LivroOutputSchema)
+def atualizar_livro(request, livro_id: int, livro: LivroInputSchema):
+    livro_obj = get_object_or_404(Livro, id=livro_id)
+    
     livro_obj.titulo = livro.titulo
     livro_obj.isbn = livro.isbn
     livro_obj.ano_publicacao = livro.ano_publicacao
@@ -96,8 +119,11 @@ def atualizar_livro(request, livro_id: int, livro: LivroSchema):
 
     return livro_obj
 
-@api.delete("/livros/{livro_id}/", response=dict)
+@api.delete("/livros/{livro_id}/", response={200: dict, 404: dict})
 def excluir_livro(request, livro_id: int):
-    livro_obj = Livro.objects.get(id=livro_id)
+    livro_obj = Livro.objects.filter(id=livro_id).first()
+    if not livro_obj:
+        return 404, {"error": "Livro não encontrado."}
+
     livro_obj.delete()
     return {"message": "Livro excluído com sucesso!"}
